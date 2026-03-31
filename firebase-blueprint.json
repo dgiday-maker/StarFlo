@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role and signature",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["preparer", "verifier", "approver", "admin"] },
+        "signatureUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "createdAt"]
+    },
+    "Voucher": {
+      "title": "Voucher",
+      "description": "A check payment voucher with workflow status and accounting entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "payee": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "accountDetails": { "type": "string" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "accountCode": { "type": "string" },
+              "description": { "type": "string" },
+              "debit": { "type": "number" },
+              "credit": { "type": "number" }
+            }
+          }
+        },
+        "status": { "type": "string", "enum": ["draft", "prepared", "verified", "approved", "void"] },
+        "preparedBy": { "type": "string" },
+        "preparedByUid": { "type": "string" },
+        "preparedAt": { "type": "string", "format": "date-time" },
+        "preparedSignature": { "type": "string" },
+        "verifiedBy": { "type": "string" },
+        "verifiedByUid": { "type": "string" },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "verifiedSignature": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "approvedByUid": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "approvedSignature": { "type": "string" },
+        "receivedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["payee", "amount", "date", "accountDetails", "status", "preparedBy", "receivedBy", "createdAt", "createdBy"]
+    },
+    "PrintSettings": {
+      "title": "PrintSettings",
+      "description": "Alignment settings for check printing",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "object",
+          "properties": {
+            "top": { "type": "number" },
+            "left": { "type": "number" }
+          }
+        },
+        "payee": {
+          "type": "object",
+          "properties": {
+            "top": { "type": "number" },
+            "left": { "type": "number" }
+          }
+        },
+        "amountFigures": {
+          "type": "object",
+          "properties": {
+            "top": { "type": "number" },
+            "left": { "type": "number" }
+          }
+        },
+        "amountWords": {
+          "type": "object",
+          "properties": {
+            "top": { "type": "number" },
+            "left": { "type": "number" }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      }
+    },
+    "Payee": {
+      "title": "Payee",
+      "description": "A registered payee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "A registered account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/vouchers/{voucherId}": {
+      "schema": "Voucher",
+      "description": "Collection of all check vouchers"
+    },
+    "/settings/global": {
+      "schema": "PrintSettings",
+      "description": "Global print alignment settings"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and roles"
+    },
+    "/payees/{payeeId}": {
+      "schema": "Payee",
+      "description": "Collection of registered payees"
+    },
+    "/accounts/{accountId}": {
+      "schema": "Account",
+      "description": "Collection of registered accounts"
+    }
+  }
+}

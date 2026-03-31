@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: vouchers
+    // Fields:
+    //   - payee: string (required, < 100 chars)
+    //   - amount: number (required, > 0)
+    //   - date: string (required, ISO 8601)
+    //   - description: string (optional, < 500 chars)
+    //   - createdAt: string (required, ISO 8601)
+    //   - createdBy: string (required, uid)
+    //
+    // Collection: settings
+    // Document: global
+    // Fields:
+    //   - date: map { top: number, left: number }
+    //   - payee: map { top: number, left: number }
+    //   - amountFigures: map { top: number, left: number }
+    //   - amountWords: map { top: number, left: number }
+    //   - updatedAt: string (required, ISO 8601)
+    //   - updatedBy: string (required, uid)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return isAuthenticated() && 
+        (('email' in request.auth.token && request.auth.token.email.lower() == "starnettechplc@gmail.com") ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true));
+    }
+
+    function hasRole(role) {
+      return isActive() && 
+        (('email' in request.auth.token && request.auth.token.email.lower() == "starnettechplc@gmail.com") ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role || 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (('email' in request.auth.token && request.auth.token.email.lower() == "starnettechplc@gmail.com") ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true));
+    }
+
+    function isValidVoucher(data) {
+      return isActive() &&
+             data.keys().hasAll(['payee', 'amount', 'date', 'accountDetails', 'status', 'preparedBy', 'receivedBy', 'createdAt', 'createdBy']) &&
+             data.payee is string && data.payee.size() > 0 &&
+             data.amount is number && data.amount > 0 &&
+             data.date is string &&
+             data.status in ['draft', 'prepared', 'verified', 'approved', 'void'] &&
+             data.createdAt is string &&
+             data.createdBy == request.auth.uid;
+    }
+
+    function isValidWorkflowUpdate(data, prev) {
+      let affectedKeys = data.diff(prev).affectedKeys();
+      
+      // Verification Step
+      let isVerifying = affectedKeys.hasOnly(['status', 'verifiedBy', 'verifiedByUid', 'verifiedAt', 'verifiedSignature']) &&
+                        data.status == 'verified' && prev.status == 'prepared' &&
+                        hasRole('verifier');
+      
+      // Approval Step
+      let isApproving = affectedKeys.hasOnly(['status', 'approvedBy', 'approvedByUid', 'approvedAt', 'approvedSignature']) &&
+                        data.status == 'approved' && prev.status == 'verified' &&
+                        hasRole('approver');
+
+      // Voiding
+      let isVoiding = affectedKeys.hasOnly(['status']) && data.status == 'void' && isAdmin();
+
+      return isVerifying || isApproving || isVoiding;
+    }
+
+    function isValidSettings(data) {
+      return data.keys().hasAll(['date', 'payee', 'amountFigures', 'amountWords', 'updatedAt', 'updatedBy']) &&
+             data.updatedAt is string &&
+             data.updatedBy == request.auth.uid;
+    }
+
+    function isValidPayee(data) {
+      return isActive() &&
+             data.keys().hasAll(['name', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.createdAt is string;
+    }
+
+    function isValidAccount(data) {
+      return isActive() &&
+             data.keys().hasAll(['code', 'name', 'createdAt']) &&
+             data.code is string && data.code.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.createdAt is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isAdmin() || (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'active']));
+    }
+
+    match /vouchers/{voucherId} {
+      allow read: if isActive();
+      allow create: if hasRole('preparer') && isValidVoucher(request.resource.data);
+      allow update: if isAdmin() || 
+                    (isOwner(resource.data.createdBy) && isValidVoucher(request.resource.data) && resource.data.status == 'draft') ||
+                    isValidWorkflowUpdate(request.resource.data, resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/global {
+      allow read: if isActive();
+      allow write: if isAdmin() && isValidSettings(request.resource.data);
+    }
+
+    match /payees/{payeeId} {
+      allow read: if isActive();
+      allow create, update: if isAdmin() && isValidPayee(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isActive();
+      allow create, update: if isAdmin() && isValidAccount(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}
